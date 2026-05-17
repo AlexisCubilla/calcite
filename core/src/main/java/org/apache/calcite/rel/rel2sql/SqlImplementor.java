@@ -2029,9 +2029,13 @@ public abstract class SqlImplementor {
           newContext = aliasContext(aliases, qualified);
         }
         if (!dialect.supportGenerateSelectStar(rel.getInput(0))) {
+          // Force qualified references when expanding SELECT * to avoid
+          // ambiguous column names in outer queries (CALCITE-7483 regression)
+          final Context expandContext = aliasContext(
+              newAliases != null ? newAliases : aliases, true);
           final List<SqlNode> expandedSelectList = new ArrayList<>();
-          for (int i = 0; i < newContext.fieldCount; i++) {
-            expandedSelectList.add(newContext.field(i));
+          for (int i = 0; i < expandContext.fieldCount; i++) {
+            expandedSelectList.add(expandContext.field(i));
           }
           select.setSelectList(new SqlNodeList(expandedSelectList, POS));
         }
@@ -2389,9 +2393,9 @@ public abstract class SqlImplementor {
           && !expectedRel.getInputs().isEmpty()
           && select.getSelectList().equals(SqlNodeList.SINGLETON_STAR)
           && !dialect.supportGenerateSelectStar(expectedRel.getInput(0))) {
-        boolean qualified =
-            !dialect.hasImplicitTableAlias() || aliases.size() > 1;
-        final Context ctx = aliasContext(aliases, qualified);
+        // Force qualified references when expanding SELECT * to avoid
+        // ambiguous column names in outer queries (CALCITE-7483 regression)
+        final Context ctx = aliasContext(aliases, true);
         final List<SqlNode> expandedList = new ArrayList<>();
         for (int i = 0; i < ctx.fieldCount; i++) {
           expandedList.add(ctx.field(i));
