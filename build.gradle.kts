@@ -968,6 +968,19 @@ allprojects {
                 // Some of the artifacts do not need to be published
                 return@configure
             }
+            repositories {
+                maven {
+                    name = "github"
+                    url = uri("https://maven.pkg.github.com/AlexisCubilla/calcite-cybira")
+                    credentials {
+                        username = System.getenv("GITHUB_ACTOR")
+                            ?: project.findProperty("gpr.user") as String?
+                            ?: "AlexisCubilla"
+                        password = System.getenv("GITHUB_TOKEN")
+                            ?: project.findProperty("gpr.key") as String?
+                    }
+                }
+            }
             publications {
                 create<MavenPublication>(project.name) {
                     artifactId = base.archivesName.get()
@@ -1011,6 +1024,34 @@ allprojects {
                             sb.append(s)
                             // Re-format the XML
                             asNode()
+
+                            // Rewrite transitive Calcite dependencies to official version
+                            // so they resolve from Maven Central instead of GitHub Packages
+                            val officialVersion = rootProject.properties["calcite.version"]
+                                ?.toString()?.replace(Regex("-cybira.*"), "") ?: "1.41.0"
+                            asNode().children().forEach { node ->
+                                if (node is groovy.util.Node && node.name().toString() == "dependencies") {
+                                    node.children().forEach { dep ->
+                                        if (dep is groovy.util.Node) {
+                                            var isCalcite = false
+                                            dep.children().forEach { child ->
+                                                if (child is groovy.util.Node && child.name().toString() == "groupId" &&
+                                                    child.text().startsWith("org.apache.calcite")) {
+                                                    isCalcite = true
+                                                }
+                                            }
+                                            if (isCalcite) {
+                                                dep.children().forEach { versionChild ->
+                                                    if (versionChild is groovy.util.Node &&
+                                                        versionChild.name().toString() == "version") {
+                                                        versionChild.setValue(officialVersion)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
 
                         fun capitalize(input: String): String {
